@@ -1,17 +1,17 @@
-# 🤖 FinAgent
+# FinAgent
 
 **AI-powered trading signal generator. Five specialist agents collaborate on a single AMD Instinct MI300X to produce structured BUY / SELL / HOLD calls with confidence, entry, stop loss, target, and per-agent reasoning.**
 
 Built for the [AMD Developer Hackathon](https://lablab.ai/ai-hackathons/amd-developer) · Track: **AI Agents & Agentic Workflows** · May 2026.
 
-|                          |                                           |
-| ------------------------ | ----------------------------------------- |
-| 🌐 **Live demo**         | _(coming — Hugging Face Space)_           |
-| 🎬 **Video walkthrough** | _(coming — YouTube link)_                 |
-| 📊 **Track**             | AI Agents & Agentic Workflows             |
-| 🧠 **Model**             | Qwen/Qwen3-8B via vLLM on ROCm 6.2        |
-| 🖥️ **Hardware**          | AMD Instinct MI300X (AMD Developer Cloud) |
-| 📜 **License**           | MIT                                       |
+|                       |                                           |
+| --------------------- | ----------------------------------------- |
+| **Live demo**         | _(coming — Hugging Face Space)_           |
+| **Video walkthrough** | _(coming — YouTube link)_                 |
+| **Track**             | AI Agents & Agentic Workflows             |
+| **Model**             | Qwen/Qwen3-8B via vLLM on ROCm 6.2        |
+| **Hardware**          | AMD Instinct MI300X (AMD Developer Cloud) |
+| **License**           | MIT                                       |
 
 ---
 
@@ -146,15 +146,11 @@ FinAgent/
 │   ├── validation.py         # Input validation (tickers, portfolio)
 │   ├── rendering.py          # HTML rendering (cards, feed, CSS)
 │   └── space/                # Ready-to-push HF Space package (app+deps+crew+tools)
-├── tests/                    # Agent-orchestration tests (94 passing)
+├── tests/                    # Agent-orchestration tests
 ├── _crewai_mocks.py          # Shared crewai MagicMock classes for testing
 ├── conftest.py               # Root pytest config — installs mocks at session start
 ├── requirements.txt          # Pinned runtime deps
-├── requirements-dev.txt      # Test + hypothesis deps
-├── DEPLOYMENT_PLAN.md        # Overall rollout plan
-├── DEPLOY_AMD.md             # AMD Developer Cloud setup, step-by-step
-├── DEPLOY_HF.md              # Hugging Face Space deployment, step-by-step
-└── WHAT_TO_DO_NOW.md         # Master submission checklist
+└── requirements-dev.txt      # Test + hypothesis deps
 ```
 
 ---
@@ -201,11 +197,11 @@ cd inference
 ./health_check.sh --host 0.0.0.0 --port 8000
 ```
 
-Full step-by-step: [`DEPLOY_AMD.md`](./DEPLOY_AMD.md).
+Once you see `Application startup complete`, the OpenAI-compatible endpoint is live at `http://<host>:8000/v1`. Point the Gradio frontend at it via the `VLLM_ENDPOINT_URL` environment variable.
 
 ### Deploy the Gradio app to a Hugging Face Space
 
-The repo ships a ready-to-push Space directory at `gradio-frontend/space/`. See [`DEPLOY_HF.md`](./DEPLOY_HF.md) for the 4-step push.
+The repo ships a ready-to-push Space directory at `gradio-frontend/space/`. It contains everything Hugging Face needs — `app.py`, `requirements.txt`, the `crew/` package, the `tools/` package, and a Space-flavoured `README.md` with the SDK metadata header. Create a new Space on Hugging Face (Gradio SDK, CPU basic), clone it, copy the contents of `gradio-frontend/space/` in, then `git push`. Set a `VLLM_ENDPOINT_URL` repository secret pointing at your vLLM instance and the Space will build and serve.
 
 ---
 
@@ -232,16 +228,14 @@ For judging the instance only needs to be live during the video recording + judg
 
 ---
 
-## The four specs
+## How it was built
 
-The codebase was built with [Kiro](https://kiro.dev) using spec-driven development. Each feature has a requirements doc, a design doc, and a task list in `.kiro/specs/`:
+The codebase was built with [Kiro](https://kiro.dev) using spec-driven development. Each feature was planned as a requirements doc, a design doc with explicit correctness properties, and a task list. The spec artefacts are kept private, but the properties they asserted are all captured in the test suite — every property has a corresponding `hypothesis` test in the `tests/` directories:
 
-- [`agent-orchestration`](.kiro/specs/agent-orchestration/) — CrewAI crew + runner + callbacks + signal parsing
-- [`agent-tools`](.kiro/specs/agent-tools/) — 10 tool functions + TTL cache + utility helpers
-- [`inference-setup`](.kiro/specs/inference-setup/) — vLLM + ROCm automation + health checks
-- [`gradio-frontend`](.kiro/specs/gradio-frontend/) — Gradio Blocks UI + live activity feed + HF deployment
-
-Each spec's `design.md` declares its correctness properties; each spec's test suite validates them with hypothesis.
+- **agent-orchestration** — CrewAI crew + runner + callbacks + signal parsing (9 correctness properties)
+- **agent-tools** — 10 tool functions + TTL cache + utility helpers
+- **inference-setup** — vLLM + ROCm automation + health checks
+- **gradio-frontend** — Gradio Blocks UI + live activity feed + HF deployment
 
 ---
 

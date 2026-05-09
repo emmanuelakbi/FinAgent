@@ -3,6 +3,17 @@
 # ==========================================================================
 # Keeps secrets, caches, and local-only state out of the public repo.
 
+# --- Kiro spec-driven dev state (internal planning, not for public repo) --
+.kiro/
+
+# --- Internal runbooks / deployment plans (not for public repo) ----------
+# These contain internal timing, TODOs, and local paths — useful while
+# working on the project but not suitable for the public hackathon repo.
+DEPLOYMENT_PLAN.md
+DEPLOY_AMD.md
+DEPLOY_HF.md
+WHAT_TO_DO_NOW.md
+
 # --- Python ---------------------------------------------------------------
 __pycache__/
 *.py[cod]
@@ -101,11 +112,8 @@ vllm_cache/
 hf-space-checkout/
 
 # --- Agent / Kiro state --------------------------------------------------
-# Keep spec artifacts (.kiro/specs/) under version control; exclude local
-# runtime caches and per-session scratch state.
-.kiro/specs/*/.*.meta.json
-.kiro/cache/
-.kiro/tmp/
+# .kiro/ is ignored entirely (see top of file) — spec-driven-development
+# artifacts stay local and are not published to the public repo.
 
 # --- Node (in case any frontend tooling sneaks in) ----------------------
 node_modules/
