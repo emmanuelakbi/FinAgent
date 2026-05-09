@@ -1,24 +1,39 @@
 """Agent factory functions for creating configured CrewAI Agent instances."""
 
-from crewai import Agent
-from langchain_openai import ChatOpenAI
+from crewai import Agent, LLM
 
 from crew.config import LLMConfig
 
 
-def create_llm(config: LLMConfig) -> ChatOpenAI:
-    """Create a shared LLM instance pointing to the vLLM endpoint."""
-    return ChatOpenAI(
+def create_llm(config: LLMConfig) -> LLM:
+    """Create a shared crewai.LLM instance pointing to the vLLM endpoint.
+
+    Newer versions of crewai validate ``Agent(llm=...)`` strictly and only
+    accept a :class:`crewai.LLM` (or a plain model-name string). A raw
+    ``langchain_openai.ChatOpenAI`` is rejected. crewai.LLM delegates to
+    litellm under the hood, and litellm needs an explicit provider prefix
+    for self-hosted OpenAI-compatible endpoints — hence the
+    ``hosted_vllm/`` prefix on the model name.
+
+    ``api_key`` is a required positional for the OpenAI provider flow even
+    when the upstream server (vLLM) does not enforce auth; any non-empty
+    value is accepted.
+    """
+    model_name = config.model_name
+    if not model_name.startswith("hosted_vllm/"):
+        model_name = f"hosted_vllm/{model_name}"
+
+    return LLM(
+        model=model_name,
         base_url=config.base_url,
-        model=config.model_name,
+        api_key="not-needed",
         temperature=config.temperature,
         max_tokens=config.max_tokens,
         timeout=config.request_timeout,
-        api_key="not-needed",
     )
 
 
-def create_market_scanner(llm: ChatOpenAI, tools: list) -> Agent:
+def create_market_scanner(llm: LLM, tools: list) -> Agent:
     """Create the Market Scanner agent.
 
     Args:
@@ -40,7 +55,7 @@ def create_market_scanner(llm: ChatOpenAI, tools: list) -> Agent:
     )
 
 
-def create_fundamental_analyst(llm: ChatOpenAI, tools: list) -> Agent:
+def create_fundamental_analyst(llm: LLM, tools: list) -> Agent:
     """Create the Fundamental Analyst agent.
 
     Args:
@@ -62,7 +77,7 @@ def create_fundamental_analyst(llm: ChatOpenAI, tools: list) -> Agent:
     )
 
 
-def create_technical_analyst(llm: ChatOpenAI, tools: list) -> Agent:
+def create_technical_analyst(llm: LLM, tools: list) -> Agent:
     """Create the Technical Analyst agent.
 
     Args:
@@ -84,7 +99,7 @@ def create_technical_analyst(llm: ChatOpenAI, tools: list) -> Agent:
     )
 
 
-def create_risk_manager(llm: ChatOpenAI, tools: list) -> Agent:
+def create_risk_manager(llm: LLM, tools: list) -> Agent:
     """Create the Risk Manager agent.
 
     Args:
@@ -106,7 +121,7 @@ def create_risk_manager(llm: ChatOpenAI, tools: list) -> Agent:
     )
 
 
-def create_chief_strategist(llm: ChatOpenAI) -> Agent:
+def create_chief_strategist(llm: LLM) -> Agent:
     """Create the Chief Strategist agent (no tools, pure reasoning)."""
     return Agent(
         role="Chief Strategist",

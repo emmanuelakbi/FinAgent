@@ -8,7 +8,7 @@ class LLMConfig:
     """Configuration for the vLLM endpoint connection."""
 
     base_url: str = "http://localhost:8000/v1"
-    model_name: str = "Qwen/Qwen3-8B"
+    model_name: str = "Qwen/Qwen3-14B"
     temperature: float = 0.7
     max_tokens: int = 1024
     request_timeout: int = 120  # seconds

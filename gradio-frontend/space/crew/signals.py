@@ -50,6 +50,9 @@ class TradingSignalParser:
         """Parse raw output into a TradingSignal.
 
         Attempts primary pattern first, falls back to heuristic extraction.
+        After parsing, prices are sanity-checked so the Strategist can't
+        ship obviously-wrong numbers (e.g. $50 000 target on a $290 stock,
+        or stop-loss on the wrong side of entry for the given action).
 
         Args:
             raw_output: Raw text from Chief Strategist agent
@@ -59,9 +62,86 @@ class TradingSignalParser:
             TradingSignal if parsing succeeds, None if output is unparseable
         """
         signal = self._parse_primary(raw_output, ticker)
-        if signal is not None:
+        if signal is None:
+            signal = self._parse_fallback(raw_output, ticker)
+        if signal is None:
+            return None
+        return self._sanity_fix_prices(signal)
+
+    @staticmethod
+    def _sanity_fix_prices(signal: TradingSignal) -> TradingSignal:
+        """Clamp runaway prices and enforce BUY/SELL inequality semantics.
+
+        Small LLMs occasionally emit obvious absurdities at synthesis time
+        (e.g. target that is 100× entry, or stop_loss on the wrong side
+        of entry for a BUY). Rather than surface nonsense to the user,
+        detect these and replace with conservative defaults derived from
+        the entry price:
+
+        * For BUY:  stop = entry × 0.97, target = entry × 1.05
+        * For SELL: stop = entry × 1.03, target = entry × 0.95
+        * For HOLD: defaults left as-is.
+
+        We only override a field when it fails a plausibility test
+        (>20 % away from entry, or on the wrong side of entry for the
+        current action). Valid prices from the model are preserved.
+        """
+        entry = signal.entry_price
+        # No entry price → nothing to clamp against.
+        if entry is None or entry <= 0:
             return signal
-        return self._parse_fallback(raw_output, ticker)
+
+        stop = signal.stop_loss
+        target = signal.target_price
+        action = signal.action
+
+        def _out_of_band(value: Optional[float]) -> bool:
+            """True if ``value`` is missing, non-positive, or >20 % from entry."""
+            if value is None or value <= 0:
+                return True
+            return abs(value - entry) / entry > 0.20
+
+        def _wrong_side_stop(value: Optional[float]) -> bool:
+            """Stop on the wrong side of entry for the current action."""
+            if value is None:
+                return False
+            if action == Action.BUY and value >= entry:
+                return True
+            if action == Action.SELL and value <= entry:
+                return True
+            return False
+
+        def _wrong_side_target(value: Optional[float]) -> bool:
+            """Target on the wrong side of entry for the current action."""
+            if value is None:
+                return False
+            if action == Action.BUY and value <= entry:
+                return True
+            if action == Action.SELL and value >= entry:
+                return True
+            return False
+
+        if action == Action.BUY:
+            if _out_of_band(stop) or _wrong_side_stop(stop):
+                stop = round(entry * 0.97, 2)
+            if _out_of_band(target) or _wrong_side_target(target):
+                target = round(entry * 1.05, 2)
+        elif action == Action.SELL:
+            if _out_of_band(stop) or _wrong_side_stop(stop):
+                stop = round(entry * 1.03, 2)
+            if _out_of_band(target) or _wrong_side_target(target):
+                target = round(entry * 0.95, 2)
+        # HOLD: leave as-is; the Strategist can describe a range.
+
+        return TradingSignal(
+            ticker=signal.ticker,
+            action=signal.action,
+            confidence=signal.confidence,
+            entry_price=entry,
+            stop_loss=stop,
+            target_price=target,
+            reasoning=signal.reasoning,
+        )
 
     def _parse_primary(self, raw_output: str, ticker: str) -> Optional[TradingSignal]:
         """Attempt to parse using the primary structured format."""

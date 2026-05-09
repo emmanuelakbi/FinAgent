@@ -215,7 +215,34 @@ def run_analysis(
             pending_events.append(event)
 
         callback = ActivityFeedCallback(handler=event_handler)
-        runner = WatchlistRunner(config=config, tools={}, callback=callback)
+
+        # Build the tools dict that maps each agent's name to its tool
+        # function list. Without this, every agent runs without tools
+        # and the LLM just hallucinates plausible-looking numbers
+        # instead of calling yfinance / ddgs / pandas-ta.
+        from tools import (
+            search_news,
+            get_price_change,
+            get_volume,
+            get_financials,
+            get_earnings,
+            get_peers,
+            get_price_history,
+            calculate_indicators,
+            calculate_position_size,
+            set_stop_loss,
+        )
+
+        crew_tools = {
+            "market_scanner": [search_news, get_price_change, get_volume],
+            "fundamental_analyst": [get_financials, get_earnings, get_peers],
+            "technical_analyst": [get_price_history, calculate_indicators],
+            "risk_manager": [calculate_position_size, set_stop_loss],
+        }
+
+        runner = WatchlistRunner(
+            config=config, tools=crew_tools, callback=callback
+        )
 
         for i, ticker in enumerate(tickers, 1):
             # Enforce the overall pipeline timeout (Requirement 4.4). We

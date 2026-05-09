@@ -24,22 +24,22 @@ base_url_strategy = st.from_regex(
 class TestLLMBaseUrlPropagation:
     """Property 1: LLM base_url propagation.
 
-    For any valid URL string provided as `base_url` in the LLMConfig,
-    when the LLM is created via `create_llm`, the resulting ChatOpenAI
-    instance SHALL have its `base_url` set to that exact string.
+    For any valid URL string provided as ``base_url`` in the
+    :class:`crew.config.LLMConfig`, when the LLM is created via
+    :func:`crew.agents.create_llm`, the resulting :class:`crewai.LLM`
+    instance SHALL have its ``base_url`` set to that exact string.
 
     **Validates: Requirements 1.2**
     """
 
     @given(base_url=base_url_strategy)
     @settings(max_examples=200, deadline=None)
-    def test_base_url_propagates_to_chat_openai(self, base_url: str) -> None:
-        """The base_url from LLMConfig is propagated to the ChatOpenAI instance."""
+    def test_base_url_propagates_to_crewai_llm(self, base_url: str) -> None:
+        """The base_url from LLMConfig is propagated to the crewai.LLM instance."""
         config = LLMConfig(base_url=base_url)
         llm = create_llm(config)
 
-        # ChatOpenAI stores base_url as openai_api_base
-        assert llm.openai_api_base == base_url, (
-            f"Expected openai_api_base to be {base_url!r}, "
-            f"got {llm.openai_api_base!r}"
+        # crewai.LLM stores the endpoint as ``base_url``.
+        assert llm.base_url == base_url, (
+            f"Expected base_url to be {base_url!r}, got {llm.base_url!r}"
         )
