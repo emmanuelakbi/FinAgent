@@ -1,0 +1,23 @@
+# Hugging Face Space — runtime dependencies for FinAgent.
+#
+# This file is consumed by the Space builder and installs into a CPU-only
+# environment (the GPU inference runs elsewhere on AMD Developer Cloud).
+# Pins here should stay tight to avoid drifting into incompatible combinations.
+
+# Gradio frontend framework
+gradio==4.44.1
+
+# Agent orchestration
+crewai==1.14.4
+langchain-openai==0.3.18
+
+# Market / tool data providers
+yfinance==1.3.0
+ddgs>=9.0,<10
+pandas-ta-remake==1.0.4
+
+# pandas-ta-remake 1.0.4 still imports pkg_resources; Setuptools >=81 removed it.
+setuptools<81
+
+# Tokenizers 0.20.x lacks DecodeStream on Py3.13; crewai needs >=0.21.
+tokenizers>=0.21,<1

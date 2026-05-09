@@ -1,0 +1,12 @@
+# Requirements for the Gradio frontend (Hugging Face Space entrypoint).
+#
+# Only list dependencies unique to this module here. The root-level
+# ``requirements.txt`` is the source of truth for crewai, langchain-openai,
+# and every other runtime dep shared across specs; duplicating pins here
+# risks resolver conflicts and version drift (e.g., an earlier version of
+# this file pinned ``crewai==0.80.0`` which never took effect because the
+# repo-wide install resolves to ``crewai==1.14.4``).
+gradio==4.44.1
+
+# Dev/test dependencies
+hypothesis

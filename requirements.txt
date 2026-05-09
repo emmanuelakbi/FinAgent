@@ -1,0 +1,14 @@
+# Runtime dependencies for FinAgent tools module
+crewai[tools]==1.14.4
+langchain-openai==0.3.18
+yfinance==1.3.0
+# duckduckgo-search was renamed to ddgs upstream; use the new name.
+ddgs>=9.0,<10
+pandas-ta-remake==1.0.4
+# pandas-ta-remake 1.0.4 still imports from pkg_resources, which was removed
+# in setuptools 81. Pin setuptools below that cutoff until the upstream fix lands.
+setuptools<81
+# Pin tokenizers to a version compatible with Python 3.13.
+# crewai 1.14.4 declares tokenizers>=0.21,<1, but 0.20.x (which some environments
+# resolve to transitively) lacks DecodeStream on Py3.13 and breaks imports.
+tokenizers>=0.21,<1
