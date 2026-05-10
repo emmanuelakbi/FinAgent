@@ -301,8 +301,8 @@ pytest tests/ tools/tests/ inference/tests/ gradio-frontend/tests/ -m "not integ
 ## Cost note
 
 The $100 AMD Developer Cloud credit is the entire compute budget.
-MI300X at ~$2–5/hour → 20–50 hours of runtime available.
-For judging the instance only needs to be live during the video recording + judging window; otherwise shut it down.
+MI300X pricing runs roughly $2–5/hour → 20–50 hours of runtime available on a single credit.
+The endpoint only needs to be live while the Gradio frontend is in active use; shutting the instance down between sessions preserves the remaining credit.
 
 ---
 
