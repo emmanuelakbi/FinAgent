@@ -528,12 +528,45 @@ class FinAgentCrew:
             50 + min(25, round(abs(pct_change) * 5))
         )
 
-        # Preserve the agents' narrative so the user still sees the
-        # reasoning — just trimmed so the UI card stays readable.
-        narrative = raw_output.strip()
-        if len(narrative) > 800:
-            narrative = narrative[:800] + "..."
-        reasoning = {"Synthesized": narrative} if narrative else None
+        # Clean, structured reasoning — the fallback path runs precisely
+        # when the LLM's final output is unparseable (often because Qwen
+        # dumped raw <think>…</think> reasoning instead of the required
+        # structured format). Dropping that noise onto the UI card would
+        # look unprofessional, so we synthesise a concise four-line
+        # rationale from the live data we already have.
+        if action == Action.BUY:
+            rationale = (
+                f"Price up {pct_change:+.2f}% vs previous close "
+                f"— short-term momentum favours a long entry."
+            )
+        elif action == Action.SELL:
+            rationale = (
+                f"Price down {pct_change:+.2f}% vs previous close "
+                f"— short-term momentum favours a short entry."
+            )
+        else:
+            rationale = (
+                f"Price flat ({pct_change:+.2f}% vs previous close) "
+                f"— no directional conviction; HOLD and wait for a cleaner setup."
+            )
+
+        stop_pct_shown = abs(stop - entry) / entry * 100
+        target_pct_shown = abs(target - entry) / entry * 100
+        risk_note = (
+            f"Bands sized to your {self._preferences.risk_tolerance} / "
+            f"{self._preferences.trading_style} profile: "
+            f"stop ≈ {stop_pct_shown:.1f}% / target ≈ {target_pct_shown:.1f}%."
+        )
+
+        reasoning = {
+            "Market": rationale,
+            "Fundamental": "Deterministic fallback — LLM output was unparseable.",
+            "Technical": (
+                "Entry anchored to live yfinance quote; stop/target derived "
+                "from the preference-aware default band."
+            ),
+            "Risk": risk_note,
+        }
 
         return TradingSignal(
             ticker=ticker,
