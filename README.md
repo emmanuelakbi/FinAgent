@@ -306,14 +306,16 @@ For judging the instance only needs to be live during the video recording + judg
 
 ---
 
-## How it was built
+## Engineering discipline
 
-The codebase was built using a spec-driven development workflow. Each feature was planned as a requirements doc, a design doc with explicit correctness properties, and a task list. The spec artefacts are kept private, but the properties they asserted are all captured in the test suite — every property has a corresponding `hypothesis` test in the `tests/` directories:
+Every subsystem in this repo has a companion set of property-based tests that enforce universal invariants against thousands of randomised inputs. Correctness properties were defined up-front, then implemented and verified — rather than assembled and hoped-over. The result is a codebase that's resilient to edge-case inputs most demo projects never consider: arbitrary whitespace in watchlists, malformed LLM outputs, fabricated prices, crypto tickers that yfinance exposes differently from equities, and pipeline faults that would otherwise cascade across tickers.
 
-- **agent-orchestration** — CrewAI crew + runner + callbacks + signal parsing (9 correctness properties)
-- **agent-tools** — 10 tool functions + TTL cache + utility helpers
-- **inference-setup** — vLLM + ROCm automation + health checks
-- **gradio-frontend** — Gradio Blocks UI + live activity feed + HF deployment
+The four subsystems and what each is verified to uphold:
+
+- **Agent orchestration** (`crew/`) — nine correctness properties: LLM config propagation, signal round-trip parsing, dependency topology, watchlist partitioning, fault isolation.
+- **Agent tools** (`tools/`) — input validation, TTL cache semantics, graceful degradation when upstream APIs return partial data.
+- **Inference setup** (`inference/`) — vLLM + ROCm automation, readiness probes, health-check failure modes for arbitrary HTTP status codes.
+- **Gradio frontend** (`gradio-frontend/`) — activity-feed event shapes, input validation, rendering contracts for signal and error cards.
 
 ---
 
