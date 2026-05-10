@@ -229,17 +229,28 @@ class FinAgentCrew:
         signal: TradingSignal,
         raw_output: str,
     ) -> TradingSignal:
-        """Swap out a parsed signal whose entry is wildly off the live price.
+        r"""Anchor every signal's entry price to the live quote.
 
-        Qwen3-14B occasionally invents prices at synthesis time that happen
-        to satisfy the BUY/SELL inequalities — e.g. returning a \$10.00
-        entry for NVDA on a day it traded at \$215. Those pass the parser
-        but mislead the user. We fetch the live price via
-        :func:`get_price_change` and, if the parsed entry differs by more
-        than 30 %, replace the whole signal with the deterministic
-        synthesis from :meth:`_synthesize_from_tools`. If the entry is in
-        range we also back-fill any missing stop/target so HOLD cards
-        render with real numbers instead of N/A.
+        Small LLMs frequently emit training-era prices (Qwen3-14B once
+        handed back \$203 for NVDA when it was trading at \$215) that
+        pass the parser because the BUY/SELL inequalities still hold
+        relative to the invented entry. The card then shows a stale
+        price — useless for a trading signal.
+
+        The fix is absolute: we fetch the current quote via
+        :func:`get_price_change`, force ``entry_price`` to that value,
+        and **rescale** stop / target by the same ratio so the LLM's
+        risk / reward geometry is preserved. Example: LLM emits
+        entry=\$200, stop=\$194, target=\$210 for an NVDA card while
+        the live price is \$215 — we scale 1.075× so the card renders
+        entry=\$215, stop=\$208.52, target=\$225.75. The narrative
+        reasoning is kept as-is.
+
+        When the parsed entry is missing, zero, or more than 50 % off
+        the live price we fall back to the deterministic tool-grounded
+        synthesis in :meth:`_synthesize_from_tools`, which picks a
+        BUY / SELL / HOLD from the day's % change and derives bands
+        from scratch.
         """
         parsed_entry = signal.entry_price
 
@@ -268,70 +279,74 @@ class FinAgentCrew:
         if live_entry is None or live_entry <= 0:
             return self._backfill_missing_prices(signal)
 
-        # If the parsed entry is missing or drifts by more than 30 %,
-        # replace with the deterministic synthesis.
-        drifted = (
+        # Parsed entry is missing or grossly off (>50 %): the model
+        # probably fabricated the entire signal, so re-synthesise from
+        # tools. Below 50 % drift we keep the LLM's narrative but
+        # rescale the numbers.
+        badly_drifted = (
             parsed_entry is None
             or parsed_entry <= 0
-            or abs(parsed_entry - live_entry) / live_entry > 0.30
+            or abs(parsed_entry - live_entry) / live_entry > 0.50
         )
-        if drifted:
+        if badly_drifted:
             synthesized = self._synthesize_from_tools(ticker, raw_output)
             if synthesized is not None:
                 return synthesized
             # If synthesis failed too, at least swap the entry.
-            return TradingSignal(
-                ticker=signal.ticker,
-                action=signal.action,
-                confidence=signal.confidence,
-                entry_price=live_entry,
-                stop_loss=signal.stop_loss,
-                target_price=signal.target_price,
-                reasoning=signal.reasoning,
-            )
-
-        # Parsed entry is close to live price — keep the LLM signal and
-        # back-fill any missing stop/target fields, plus swap out any
-        # stop/target that are wildly off (more than 20 % from entry).
-        # Small LLMs occasionally emit numbers that are credible-looking
-        # on their own but nonsensical for the ticker (e.g. BTC-USD
-        # at \$80 782 with a \$79 stop-loss — the model dropped the "k").
-        entry = signal.entry_price
-        stop = signal.stop_loss
-        target = signal.target_price
-
-        def _far_from_entry(v: Optional[float]) -> bool:
-            if v is None or v <= 0:
-                return True
-            return abs(v - entry) / entry > 0.20
-
-        def _too_close_to_entry(v: Optional[float]) -> bool:
-            """True if a stop/target is within 0.5 % of entry — effectively a
-            degenerate zero-risk / zero-reward number that the LLM sometimes
-            emits when it conflates HOLD with 'no action'."""
-            if v is None or v <= 0:
-                return True
-            return abs(v - entry) / entry < 0.005
-
-        if _far_from_entry(stop) or _too_close_to_entry(stop):
-            stop = None  # trigger back-fill below
-        if _far_from_entry(target) or _too_close_to_entry(target):
-            target = None
-
-        if stop is None or target is None:
             return self._backfill_missing_prices(
                 TradingSignal(
                     ticker=signal.ticker,
                     action=signal.action,
                     confidence=signal.confidence,
-                    entry_price=entry,
-                    stop_loss=stop,
-                    target_price=target,
+                    entry_price=live_entry,
+                    stop_loss=None,
+                    target_price=None,
                     reasoning=signal.reasoning,
                 )
             )
 
-        return signal
+        # Anchor to live price and rescale stop / target to preserve
+        # the LLM's risk-reward geometry. If either side is missing or
+        # degenerate, let the back-fill derive a fresh band.
+        scale = live_entry / parsed_entry
+        stop = signal.stop_loss
+        target = signal.target_price
+
+        def _bad(v: Optional[float]) -> bool:
+            """Treat very-close-to-entry (< 0.5 %) stops / targets as
+            degenerate zero-risk numbers the model sometimes emits on
+            HOLD calls."""
+            if v is None or v <= 0:
+                return True
+            return abs(v - parsed_entry) / parsed_entry < 0.005
+
+        new_stop = None if _bad(stop) else round(stop * scale, 2)
+        new_target = None if _bad(target) else round(target * scale, 2)
+
+        # Extra guard: after rescaling, stop / target should still be
+        # within a reasonable band of the new entry (tight stop < 10 %,
+        # target < 15 %). If the LLM emitted something implausibly wide
+        # we let the back-fill replace it.
+        def _unreasonable(v: Optional[float]) -> bool:
+            if v is None:
+                return True
+            return abs(v - live_entry) / live_entry > 0.15
+
+        if _unreasonable(new_stop):
+            new_stop = None
+        if _unreasonable(new_target):
+            new_target = None
+
+        rescaled = TradingSignal(
+            ticker=signal.ticker,
+            action=signal.action,
+            confidence=signal.confidence,
+            entry_price=round(live_entry, 2),
+            stop_loss=new_stop,
+            target_price=new_target,
+            reasoning=signal.reasoning,
+        )
+        return self._backfill_missing_prices(rescaled)
 
     @staticmethod
     def _backfill_missing_prices(signal: TradingSignal) -> TradingSignal:
