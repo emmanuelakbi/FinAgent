@@ -62,7 +62,7 @@ flowchart LR
     MS & FA & TA & RM & CS <-->|OpenAI-compatible HTTPS| V
 ```
 
-| Layer              | Role                                                                  | Spec                  |
+| Layer              | Role                                                                  | Subsystem             |
 | ------------------ | --------------------------------------------------------------------- | --------------------- |
 | `inference/`       | Bash-driven ROCm + vLLM + Qwen3 deployment on MI300X                  | `inference-setup`     |
 | `tools/`           | 10 keyless tool functions (yfinance, ddgs, pandas-ta) agents can call | `agent-tools`         |
@@ -108,11 +108,11 @@ The entry price is grounded in the live yfinance quote. Stop-loss and target are
 
 ## What makes this technically interesting
 
-### Spec-driven development with property-based testing
+### Property-based testing of invariants
 
-The whole project was built as **four independent specs** (requirements → design → tasks), each with:
+The whole project is built around **invariants that must hold universally** — rules like "every agent must see the same `base_url`," "a formatted signal must survive a round-trip through the parser," "a failed ticker must never break the watchlist." These invariants are enforced by:
 
-- A **correctness properties** section that states universal invariants the implementation must hold.
+- A **correctness-invariants** layer that states, up-front, what the implementation must guarantee.
 - **Hypothesis** property-based tests that exercise those invariants across thousands of randomised inputs.
 
 Examples of what's mechanically verified:
@@ -308,7 +308,7 @@ For judging the instance only needs to be live during the video recording + judg
 
 ## How it was built
 
-The architecture started from a single constraint: every signal a judge sees must be grounded in real market data, not LLM imagination. That constraint cascaded into the rest of the design.
+The architecture started from a single constraint: every signal a user sees must be grounded in real market data, not LLM imagination. That constraint cascaded into the rest of the design.
 
 **The agent topology** mirrors how an actual investment desk splits the work. Scanner, Fundamental Analyst, and Technical Analyst run in parallel against the same ticker — each reads its own slice of the world. Risk Manager waits on Technical's entry price because you can't size a position without one. Chief Strategist waits on all four, then produces the final BUY/SELL/HOLD. CrewAI's `context=[...]` plumbing handles the wait-for-predecessor dependencies cleanly without a bespoke scheduler.
 
