@@ -324,17 +324,24 @@ class FinAgentCrew:
         new_target = None if _bad(target) else round(target * scale, 2)
 
         # Extra guard: after rescaling, stop / target should still be
-        # within a reasonable band of the new entry (tight stop < 10 %,
-        # target < 15 %). If the LLM emitted something implausibly wide
-        # we let the back-fill replace it.
-        def _unreasonable(v: Optional[float]) -> bool:
+        # within a reasonable band of the new entry. Stops must stay
+        # tight (<= 8 %) so the R:R remains sane for a retail card;
+        # targets can be more ambitious (<= 15 %). If the LLM emitted
+        # something implausibly wide we let the back-fill replace it
+        # with the default 3 % / 5 % band.
+        def _stop_unreasonable(v: Optional[float]) -> bool:
+            if v is None:
+                return True
+            return abs(v - live_entry) / live_entry > 0.08
+
+        def _target_unreasonable(v: Optional[float]) -> bool:
             if v is None:
                 return True
             return abs(v - live_entry) / live_entry > 0.15
 
-        if _unreasonable(new_stop):
+        if _stop_unreasonable(new_stop):
             new_stop = None
-        if _unreasonable(new_target):
+        if _target_unreasonable(new_target):
             new_target = None
 
         rescaled = TradingSignal(
