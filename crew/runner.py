@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from crew.config import OrchestratorConfig
+from crew.config import OrchestratorConfig, TradePreferences
 from crew.crew import CrewResult, FinAgentCrew
 from crew.callbacks import ActivityFeedCallback
 
@@ -28,10 +28,12 @@ class WatchlistRunner:
         config: OrchestratorConfig,
         tools: dict[str, list],
         callback: Optional[ActivityFeedCallback] = None,
+        preferences: Optional[TradePreferences] = None,
     ):
         self._config = config
         self._tools = tools
         self._callback = callback
+        self._preferences = preferences or TradePreferences()
 
     def run(self, watchlist: str) -> WatchlistResult:
         """Parse the watchlist and run the analysis pipeline for each ticker.
@@ -100,6 +102,7 @@ class WatchlistRunner:
                 config=self._config,
                 tools=self._tools,
                 callback=self._callback,
+                preferences=self._preferences,
             )
             return crew.run(ticker)
         except Exception as e:

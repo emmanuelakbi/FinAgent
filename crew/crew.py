@@ -8,7 +8,7 @@ from typing import Optional
 
 from crewai import Crew, Process
 
-from crew.config import OrchestratorConfig
+from crew.config import OrchestratorConfig, TradePreferences
 from crew.agents import (
     create_llm,
     create_market_scanner,
@@ -47,6 +47,7 @@ class FinAgentCrew:
         config: OrchestratorConfig,
         tools: dict[str, list],
         callback: Optional[ActivityFeedCallback] = None,
+        preferences: Optional[TradePreferences] = None,
     ):
         """Initialize the crew orchestrator.
 
@@ -60,10 +61,14 @@ class FinAgentCrew:
                     "risk_manager": [calculate_position_size, set_stop_loss],
                 }
             callback: Optional activity feed callback for real-time UI updates
+            preferences: User trading preferences that shape the final
+                signal's stop / target bands. Defaults to Moderate /
+                Swing Trading / $10k when not supplied.
         """
         self._config = config
         self._tools = tools
         self._callback = callback
+        self._preferences = preferences or TradePreferences()
         self._parser = TradingSignalParser()
 
     def run(self, ticker: str) -> CrewResult:
@@ -180,11 +185,14 @@ class FinAgentCrew:
         market_task = create_market_scan_task(market_scanner, ticker)
         fundamental_task = create_fundamental_task(fundamental_analyst, ticker)
         technical_task = create_technical_task(technical_analyst, ticker)
-        risk_task = create_risk_task(risk_manager, ticker, [technical_task])
+        risk_task = create_risk_task(
+            risk_manager, ticker, [technical_task], self._preferences
+        )
         strategy_task = create_strategy_task(
             chief_strategist,
             ticker,
             [market_task, fundamental_task, technical_task, risk_task],
+            self._preferences,
         )
 
         return Crew(
@@ -324,20 +332,23 @@ class FinAgentCrew:
         new_target = None if _bad(target) else round(target * scale, 2)
 
         # Extra guard: after rescaling, stop / target should still be
-        # within a reasonable band of the new entry. Stops must stay
-        # tight (<= 8 %) so the R:R remains sane for a retail card;
-        # targets can be more ambitious (<= 15 %). If the LLM emitted
-        # something implausibly wide we let the back-fill replace it
-        # with the default 3 % / 5 % band.
+        # within a reasonable band of the new entry. Bounds come from
+        # the user's preferences — Conservative / Day Trading locks
+        # everything down tight, Aggressive / Position Trading opens
+        # it up. If the LLM emitted something implausibly wide we let
+        # the back-fill replace it with the profile default band.
+        stop_clamp = self._preferences.stop_clamp
+        target_clamp = self._preferences.target_clamp
+
         def _stop_unreasonable(v: Optional[float]) -> bool:
             if v is None:
                 return True
-            return abs(v - live_entry) / live_entry > 0.08
+            return abs(v - live_entry) / live_entry > stop_clamp
 
         def _target_unreasonable(v: Optional[float]) -> bool:
             if v is None:
                 return True
-            return abs(v - live_entry) / live_entry > 0.15
+            return abs(v - live_entry) / live_entry > target_clamp
 
         if _stop_unreasonable(new_stop):
             new_stop = None
@@ -355,12 +366,14 @@ class FinAgentCrew:
         )
         return self._backfill_missing_prices(rescaled)
 
-    @staticmethod
-    def _backfill_missing_prices(signal: TradingSignal) -> TradingSignal:
+    def _backfill_missing_prices(self, signal: TradingSignal) -> TradingSignal:
         """Back-fill stop-loss and target when the LLM emitted N/A or omitted them.
 
         This ensures the UI card always shows three numeric prices rather
-        than a mix of numbers and N/A placeholders.
+        than a mix of numbers and N/A placeholders. The band widths come
+        from the user's :class:`TradePreferences` so Conservative / Day
+        Trading produces tight short-horizon numbers and Aggressive /
+        Position Trading produces wider longer-horizon numbers.
         """
         entry = signal.entry_price
         if entry is None or entry <= 0:
@@ -368,22 +381,29 @@ class FinAgentCrew:
 
         stop = signal.stop_loss
         target = signal.target_price
+        stop_pct = self._preferences.stop_pct
+        target_pct = self._preferences.target_pct
+        # HOLD cards use a half-width band so the card still renders
+        # with numeric stop / target without implying a directional
+        # trade the Strategist wasn't making.
+        hold_stop_pct = max(0.015, stop_pct * 0.5)
+        hold_target_pct = max(0.02, target_pct * 0.5)
 
         if stop is None or stop <= 0:
             if signal.action == Action.BUY:
-                stop = round(entry * 0.97, 2)
+                stop = round(entry * (1 - stop_pct), 2)
             elif signal.action == Action.SELL:
-                stop = round(entry * 1.03, 2)
+                stop = round(entry * (1 + stop_pct), 2)
             else:  # HOLD
-                stop = round(entry * 0.97, 2)
+                stop = round(entry * (1 - hold_stop_pct), 2)
 
         if target is None or target <= 0:
             if signal.action == Action.BUY:
-                target = round(entry * 1.05, 2)
+                target = round(entry * (1 + target_pct), 2)
             elif signal.action == Action.SELL:
-                target = round(entry * 0.95, 2)
+                target = round(entry * (1 - target_pct), 2)
             else:  # HOLD
-                target = round(entry * 1.03, 2)
+                target = round(entry * (1 + hold_target_pct), 2)
 
         return TradingSignal(
             ticker=signal.ticker,
@@ -487,16 +507,21 @@ class FinAgentCrew:
         else:
             action = Action.HOLD
 
-        # Price bands: tight stop, a touch more space on target.
+        # Price bands derived from user preferences.
+        stop_pct = self._preferences.stop_pct
+        target_pct = self._preferences.target_pct
+        hold_stop_pct = max(0.015, stop_pct * 0.5)
+        hold_target_pct = max(0.02, target_pct * 0.5)
+
         if action == Action.BUY:
-            stop = round(entry * 0.97, 2)
-            target = round(entry * 1.05, 2)
+            stop = round(entry * (1 - stop_pct), 2)
+            target = round(entry * (1 + target_pct), 2)
         elif action == Action.SELL:
-            stop = round(entry * 1.03, 2)
-            target = round(entry * 0.95, 2)
+            stop = round(entry * (1 + stop_pct), 2)
+            target = round(entry * (1 - target_pct), 2)
         else:  # HOLD
-            stop = round(entry * 0.97, 2)
-            target = round(entry * 1.03, 2)
+            stop = round(entry * (1 - hold_stop_pct), 2)
+            target = round(entry * (1 + hold_target_pct), 2)
 
         # Confidence = 50 baseline + up to 25 more for stronger moves.
         confidence = int(

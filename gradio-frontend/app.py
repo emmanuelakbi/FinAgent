@@ -196,6 +196,7 @@ def run_analysis(
         from crew import (
             LLMConfig,
             OrchestratorConfig,
+            TradePreferences,
             WatchlistRunner,
         )
         from crew.callbacks import ActivityEvent, ActivityFeedCallback, EventType
@@ -203,6 +204,12 @@ def run_analysis(
         # Configure the orchestrator to point at the vLLM inference endpoint.
         config = OrchestratorConfig(
             llm=LLMConfig(base_url=VLLM_ENDPOINT_URL),
+        )
+
+        preferences = TradePreferences(
+            risk_tolerance=risk_tolerance,
+            trading_style=trading_style,
+            portfolio_value=float(portfolio_value),
         )
 
         # Buffer events emitted by the runner/crew during ``_run_single``.
@@ -241,7 +248,10 @@ def run_analysis(
         }
 
         runner = WatchlistRunner(
-            config=config, tools=crew_tools, callback=callback
+            config=config,
+            tools=crew_tools,
+            callback=callback,
+            preferences=preferences,
         )
 
         for i, ticker in enumerate(tickers, 1):
