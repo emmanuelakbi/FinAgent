@@ -16,7 +16,7 @@ Built for the [AMD Developer Hackathon](https://lablab.ai/ai-hackathons/amd-deve
 
 ## The problem
 
-Retail traders juggling a watchlist face a daily triage problem: which of these 10 tickers deserves real attention today? Most AI tools answer this with a single-shot prompt into a general-purpose model — the output is confident, shallow, and indistinguishable across tickers.
+If you're watching a list of stocks, you hit the same question every day: which of these 10 tickers deserves real attention today? Most AI tools answer this with a single-shot prompt into a general-purpose model — the output is confident, shallow, and indistinguishable across tickers.
 
 Real analysts don't work that way. They split the work: one person reads the news, another digs into financials, another reads charts, another sizes the trade. Then a head of strategy synthesizes.
 
