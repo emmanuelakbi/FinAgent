@@ -193,17 +193,6 @@ python gradio-frontend/app.py
 # → http://127.0.0.1:7860
 ```
 
-### Deploy vLLM on an AMD MI300X
-
-```bash
-cd inference
-./setup.sh --host 0.0.0.0 --port 8000
-# Once you see "Application startup complete":
-./health_check.sh --host 0.0.0.0 --port 8000
-```
-
-Once you see `Application startup complete`, the OpenAI-compatible endpoint is live at `http://<host>:8000/v1`. Point the Gradio frontend at it via the `VLLM_ENDPOINT_URL` environment variable.
-
 ### Deploy the Gradio app to a Hugging Face Space
 
 The repo ships a ready-to-push Space directory at `gradio-frontend/space/`. It contains everything Hugging Face needs — `app.py`, `requirements.txt`, the `crew/` package, the `tools/` package, and a Space-flavoured `README.md` with the SDK metadata header. Create a new Space on Hugging Face (Gradio SDK, CPU basic), clone it, copy the contents of `gradio-frontend/space/` in, then `git push`. Set a `VLLM_ENDPOINT_URL` repository secret pointing at your vLLM instance and the Space will build and serve.
@@ -224,7 +213,7 @@ cd FinAgent
 # 2. Boot vLLM with Qwen3-14B and tool-calling enabled
 cd inference
 ./setup.sh --host 0.0.0.0 --port 8000
-# Wait ~30s for the model to load, then:
+# Wait ~30s for "Application startup complete", then verify:
 ./health_check.sh --host 0.0.0.0 --port 8000
 
 # 3. In a second terminal, launch the Gradio frontend
@@ -319,7 +308,7 @@ For judging the instance only needs to be live during the video recording + judg
 
 ## How it was built
 
-The codebase was built with [Kiro](https://kiro.dev) using spec-driven development. Each feature was planned as a requirements doc, a design doc with explicit correctness properties, and a task list. The spec artefacts are kept private, but the properties they asserted are all captured in the test suite — every property has a corresponding `hypothesis` test in the `tests/` directories:
+The codebase was built using a spec-driven development workflow. Each feature was planned as a requirements doc, a design doc with explicit correctness properties, and a task list. The spec artefacts are kept private, but the properties they asserted are all captured in the test suite — every property has a corresponding `hypothesis` test in the `tests/` directories:
 
 - **agent-orchestration** — CrewAI crew + runner + callbacks + signal parsing (9 correctness properties)
 - **agent-tools** — 10 tool functions + TTL cache + utility helpers
