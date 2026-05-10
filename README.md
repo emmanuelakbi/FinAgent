@@ -4,14 +4,13 @@
 
 Built for the [AMD Developer Hackathon](https://lablab.ai/ai-hackathons/amd-developer) · Track: **AI Agents & Agentic Workflows** · May 2026.
 
-|                       |                                                                            |
-| --------------------- | -------------------------------------------------------------------------- |
-| **Live demo**         | <https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/finagent> |
-| **Video walkthrough** | _(coming — YouTube link)_                                                  |
-| **Track**             | AI Agents & Agentic Workflows                                              |
-| **Model**             | Qwen/Qwen3-14B via vLLM 0.17 on ROCm 7.2                                   |
-| **Hardware**          | AMD Instinct MI300X (AMD Developer Cloud)                                  |
-| **License**           | MIT                                                                        |
+|               |                                                                            |
+| ------------- | -------------------------------------------------------------------------- |
+| **Live demo** | <https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/finagent> |
+| **Track**     | AI Agents & Agentic Workflows                                              |
+| **Model**     | Qwen/Qwen3-14B via vLLM 0.17 on ROCm 7.2                                   |
+| **Hardware**  | AMD Instinct MI300X (AMD Developer Cloud)                                  |
+| **License**   | MIT                                                                        |
 
 ---
 
