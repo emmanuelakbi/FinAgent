@@ -210,11 +210,11 @@ The repo ships a ready-to-push Space directory at `gradio-frontend/space/`. It c
 
 ---
 
-## For reviewers — run it on your own GPU in under 10 minutes
+## Run it on your own GPU in under 10 minutes
 
-If the live Space at `huggingface.co/spaces/lablab-ai-amd-developer-hackathon/finagent` is offline during your review (the MI300X instance runs on a $100 starter credit), here is the complete reproduction recipe. Everything is OpenAI-compatible, so it runs against **any** vLLM instance, not just AMD silicon — a rented A100 or H100 works identically.
+If the live Space at `huggingface.co/spaces/lablab-ai-amd-developer-hackathon/finagent` is offline, here is the complete self-host recipe. Everything is OpenAI-compatible, so the project runs against **any** vLLM instance, not just AMD silicon — a rented A100 or H100 works identically.
 
-### On an AMD MI300X (recommended — matches the submission story)
+### On an AMD MI300X (matches the original deployment)
 
 ```bash
 # 1. Clone the repo
@@ -253,7 +253,7 @@ python gradio-frontend/app.py
 
 ### Without any GPU — use a hosted Qwen3-14B endpoint
 
-If you just want to verify the agents run end-to-end without provisioning hardware, point `VLLM_ENDPOINT_URL` at any OpenAI-compatible endpoint that serves Qwen3-14B (Together AI, Fireworks, OpenRouter all work). The code uses `crewai.LLM` with the `hosted_vllm/` litellm provider, so any OpenAI-compatible base URL drops in:
+To verify the agents run end-to-end without provisioning hardware, point `VLLM_ENDPOINT_URL` at any OpenAI-compatible endpoint that serves Qwen3-14B (Together AI, Fireworks, OpenRouter all work). The code uses `crewai.LLM` with the `hosted_vllm/` litellm provider, so any OpenAI-compatible base URL drops in:
 
 ```bash
 export VLLM_ENDPOINT_URL=https://your-provider/v1
