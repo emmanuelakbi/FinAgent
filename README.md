@@ -210,6 +210,90 @@ The repo ships a ready-to-push Space directory at `gradio-frontend/space/`. It c
 
 ---
 
+## For reviewers — run it on your own GPU in under 10 minutes
+
+If the live Space at `huggingface.co/spaces/lablab-ai-amd-developer-hackathon/finagent` is offline during your review (the MI300X instance runs on a $100 starter credit), here is the complete reproduction recipe. Everything is OpenAI-compatible, so it runs against **any** vLLM instance, not just AMD silicon — a rented A100 or H100 works identically.
+
+### On an AMD MI300X (recommended — matches the submission story)
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/emmanuelakbi/FinAgent.git
+cd FinAgent
+
+# 2. Boot vLLM with Qwen3-14B and tool-calling enabled
+cd inference
+./setup.sh --host 0.0.0.0 --port 8000
+# Wait ~30s for the model to load, then:
+./health_check.sh --host 0.0.0.0 --port 8000
+
+# 3. In a second terminal, launch the Gradio frontend
+cd ..
+pip install -r requirements.txt
+export VLLM_ENDPOINT_URL=http://localhost:8000/v1
+python gradio-frontend/app.py
+# Open http://127.0.0.1:7860 and enter a watchlist
+```
+
+### On any other GPU (A100, H100, RTX 4090 with enough VRAM)
+
+Qwen3-14B requires ~28 GB VRAM. Skip `inference/setup.sh` and run vanilla vLLM:
+
+```bash
+pip install "vllm>=0.17"
+vllm serve Qwen/Qwen3-14B \
+    --host 0.0.0.0 --port 8000 \
+    --enable-auto-tool-choice --tool-call-parser hermes
+
+# Then, from the repo root:
+pip install -r requirements.txt
+export VLLM_ENDPOINT_URL=http://localhost:8000/v1
+python gradio-frontend/app.py
+```
+
+### Without any GPU — use a hosted Qwen3-14B endpoint
+
+If you just want to verify the agents run end-to-end without provisioning hardware, point `VLLM_ENDPOINT_URL` at any OpenAI-compatible endpoint that serves Qwen3-14B (Together AI, Fireworks, OpenRouter all work). The code uses `crewai.LLM` with the `hosted_vllm/` litellm provider, so any OpenAI-compatible base URL drops in:
+
+```bash
+export VLLM_ENDPOINT_URL=https://your-provider/v1
+export OPENAI_API_KEY=your_key   # optional; any value works against vLLM itself
+python gradio-frontend/app.py
+```
+
+### Verifying the pipeline without the UI
+
+```bash
+# Runs the full 5-agent pipeline for AAPL and prints the signal:
+python -c "
+from crew import LLMConfig, OrchestratorConfig, WatchlistRunner
+from tools import (search_news, get_price_change, get_volume,
+                   get_financials, get_earnings, get_peers,
+                   get_price_history, calculate_indicators,
+                   calculate_position_size, set_stop_loss)
+runner = WatchlistRunner(
+    config=OrchestratorConfig(llm=LLMConfig(base_url='http://localhost:8000/v1')),
+    tools={
+        'market_scanner': [search_news, get_price_change, get_volume],
+        'fundamental_analyst': [get_financials, get_earnings, get_peers],
+        'technical_analyst': [get_price_history, calculate_indicators],
+        'risk_manager': [calculate_position_size, set_stop_loss],
+    },
+)
+print(runner.run('AAPL'))
+"
+```
+
+### Verifying the tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ tools/tests/ inference/tests/ gradio-frontend/tests/ -m "not integration"
+# -> 309 passed
+```
+
+---
+
 ## Tech stack
 
 | Concern          | Choice                                 | Why                                                                                           |
