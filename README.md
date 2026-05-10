@@ -306,16 +306,19 @@ For judging the instance only needs to be live during the video recording + judg
 
 ---
 
-## Engineering discipline
+## How it was built
 
-Every subsystem in this repo has a companion set of property-based tests that enforce universal invariants against thousands of randomised inputs. Correctness properties were defined up-front, then implemented and verified — rather than assembled and hoped-over. The result is a codebase that's resilient to edge-case inputs most demo projects never consider: arbitrary whitespace in watchlists, malformed LLM outputs, fabricated prices, crypto tickers that yfinance exposes differently from equities, and pipeline faults that would otherwise cascade across tickers.
+The architecture started from a single constraint: every signal a judge sees must be grounded in real market data, not LLM imagination. That constraint cascaded into the rest of the design.
 
-The four subsystems and what each is verified to uphold:
+**The agent topology** mirrors how an actual investment desk splits the work. Scanner, Fundamental Analyst, and Technical Analyst run in parallel against the same ticker — each reads its own slice of the world. Risk Manager waits on Technical's entry price because you can't size a position without one. Chief Strategist waits on all four, then produces the final BUY/SELL/HOLD. CrewAI's `context=[...]` plumbing handles the wait-for-predecessor dependencies cleanly without a bespoke scheduler.
 
-- **Agent orchestration** (`crew/`) — nine correctness properties: LLM config propagation, signal round-trip parsing, dependency topology, watchlist partitioning, fault isolation.
-- **Agent tools** (`tools/`) — input validation, TTL cache semantics, graceful degradation when upstream APIs return partial data.
-- **Inference setup** (`inference/`) — vLLM + ROCm automation, readiness probes, health-check failure modes for arbitrary HTTP status codes.
-- **Gradio frontend** (`gradio-frontend/`) — activity-feed event shapes, input validation, rendering contracts for signal and error cards.
+**The grounding layer** was the hardest engineering problem. A 14B model running at temperature 0.7 will happily emit `$10.00` as the entry price for NVDA on a day it traded at $215. It wasn't enough to ask nicely in the prompt — I had to build a deterministic post-processor that anchors every parsed signal's entry price to the live yfinance quote and rescales stop/target proportionally to preserve the LLM's risk/reward geometry. When the output is too malformed to parse at all, a fallback synthesiser reads the live price directly and constructs a clean signal from scratch. That turned the pipeline from "usually works" into "always returns a grounded card."
+
+**The test suite** was built property-first. Every invariant that matters — `base_url` propagation to every agent, `TradingSignal` round-trip parseability, watchlist parser determinism under arbitrary whitespace, fault isolation across tickers, vLLM health-check behaviour under any HTTP status code — is exercised by a Hypothesis property test across thousands of randomised inputs. 309 unit + property tests pass on every commit.
+
+**The UI preferences** (Risk Tolerance, Trading Style, Portfolio Value) weren't cosmetic dropdowns added for variety. They thread end-to-end into the Strategist's task prompt and the grounding clamps, so the same ticker at the same moment produces a tight 1.5% / 2% band on Conservative / Day Trading and a wide 5% / 10% band on Aggressive / Position Trading. A user's stated profile actually changes what they see.
+
+**Inference is self-hosted**. No OpenAI, no Claude, no API bills. vLLM 0.17 on ROCm 7.2 exposes an OpenAI-compatible endpoint; CrewAI agents talk to it via the `hosted_vllm/` litellm provider with native tool-calling enabled. Every one of the five agents shares the same `crewai.LLM` instance, so vLLM's prefix caching means repeated backstory prefixes hit the same KV cache — a measurable throughput win on the MI300X.
 
 ---
 
