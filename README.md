@@ -4,14 +4,14 @@
 
 Built for the [AMD Developer Hackathon](https://lablab.ai/ai-hackathons/amd-developer) · Track: **AI Agents & Agentic Workflows** · May 2026.
 
-|                       |                                           |
-| --------------------- | ----------------------------------------- |
-| **Live demo**         | _(coming — Hugging Face Space)_           |
-| **Video walkthrough** | _(coming — YouTube link)_                 |
-| **Track**             | AI Agents & Agentic Workflows             |
-| **Model**             | Qwen/Qwen3-8B via vLLM on ROCm 6.2        |
-| **Hardware**          | AMD Instinct MI300X (AMD Developer Cloud) |
-| **License**           | MIT                                       |
+|                       |                                                                            |
+| --------------------- | -------------------------------------------------------------------------- |
+| **Live demo**         | <https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/finagent> |
+| **Video walkthrough** | _(coming — YouTube link)_                                                  |
+| **Track**             | AI Agents & Agentic Workflows                                              |
+| **Model**             | Qwen/Qwen3-14B via vLLM 0.17 on ROCm 7.2                                   |
+| **Hardware**          | AMD Instinct MI300X (AMD Developer Cloud)                                  |
+| **License**           | MIT                                                                        |
 
 ---
 
@@ -23,7 +23,7 @@ Real analysts don't work that way. They split the work: one person reads the new
 
 ## The solution
 
-FinAgent reproduces that division of labour with five CrewAI agents running against a **single locally-hosted Qwen3-8B instance on an AMD MI300X GPU**. Each agent is tool-equipped for its niche; they run in a dependency-correct topology (scanner + fundamental + technical in parallel, then risk, then strategy), and the final output conforms to a strict schema that the Gradio frontend parses into interactive signal cards.
+FinAgent reproduces that division of labour with five CrewAI agents running against a **single locally-hosted Qwen3-14B instance on an AMD MI300X GPU**. Each agent is tool-equipped for its niche; they run in a dependency-correct topology (scanner + fundamental + technical first, then risk, then strategy), and the final output conforms to a strict schema that the Gradio frontend parses into interactive signal cards.
 
 Everything is **self-hosted inference** — no OpenAI, no Claude, no API bills. The $100 AMD Developer Cloud credit is the entire compute budget.
 
@@ -41,7 +41,7 @@ flowchart LR
     TA[Technical Analyst]
     RM[Risk Manager]
     CS[Chief Strategist]
-    V[vLLM<br/>Qwen3-8B<br/>MI300X]
+    V[vLLM<br/>Qwen3-14B<br/>MI300X]
     T[(Tool APIs<br/>yfinance / ddgs)]
 
     UI -->|ticker watchlist| R
@@ -88,16 +88,22 @@ For a watchlist `AAPL, NVDA, BTC-USD`, each ticker renders a card like:
 
 ```
 AAPL — BUY (Confidence: 75%)
-Entry: $185.42
-Stop Loss: $180.55
-Target:   $192.17
+Entry:     $293.32
+Stop Loss: $284.52
+Target:    $307.99
 
 Reasoning:
-- Market:      Positive earnings surprise and unusual volume detected
-- Fundamental: Undervalued relative to peers with strong growth
-- Technical:   RSI neutral, MACD bullish crossover, price near support
-- Risk:        1:2 risk-reward ratio with ATR-based stop at $180.55
+- Market:      Uptrend confirmed by rising prices and 20-day SMA, but
+               overbought RSI suggests short-term consolidation risk
+- Fundamental: Strong earnings momentum (+3.6–9.8% surprises), robust
+               margins (27%), but elevated debt and high P/E vs peers
+- Technical:   Price above Bollinger Upper ($291.39), RSI 73 overbought,
+               MACD neutral
+- Risk:        1:2 risk-reward ratio with 5% stop-loss and target;
+               position size 110 shares (2% of a $100K portfolio)
 ```
+
+The entry price is grounded in the live yfinance quote. Stop-loss and target are synthesised from the Risk Manager's ATR band, with an automatic sanity check that replaces any LLM-emitted price that drifts more than 20 % from the live quote.
 
 ---
 
@@ -112,7 +118,7 @@ The whole project was built as **four independent specs** (requirements → desi
 
 Examples of what's mechanically verified:
 
-- `LLMConfig.base_url` propagates through every agent to the ChatOpenAI client (Property 1).
+- `LLMConfig.base_url` propagates through every agent to the `crewai.LLM` client (Property 1).
 - A formatted `TradingSignal` survives a round-trip through the parser for any valid ticker, action, confidence, and price (Property 2).
 - The watchlist parser normalises arbitrary whitespace / case / empty segments deterministically (Property 7).
 - `WatchlistResult.successful + failed == total_tickers` always holds (Property 8).
@@ -122,7 +128,7 @@ All 309 unit + property tests pass on every commit.
 
 ### Shared LLM instance across all five agents
 
-Most CrewAI examples give every agent its own LLM client. FinAgent constructs **one** `ChatOpenAI` pointing at the vLLM endpoint and shares it — reducing memory and simplifying cache reuse. vLLM's prefix caching means repeated backstory prefixes across agents hit the same KV cache, giving a measurable throughput win on the MI300X.
+Most CrewAI examples give every agent its own LLM client. FinAgent constructs **one** `crewai.LLM` (backed by litellm's `hosted_vllm/` provider) pointing at the vLLM endpoint and shares it across the five agents. vLLM's prefix caching means repeated backstory prefixes hit the same KV cache, giving a measurable throughput win on the MI300X.
 
 ### Fault-isolated multi-ticker pipeline
 
@@ -207,16 +213,16 @@ The repo ships a ready-to-push Space directory at `gradio-frontend/space/`. It c
 
 ## Tech stack
 
-| Concern          | Choice                                 | Why                                                                                        |
-| ---------------- | -------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Agent framework  | **CrewAI 1.14**                        | Built-in role/task/dependency model; `context=[...]` handles wait-for-predecessor cleanly  |
-| Inference server | **vLLM 0.6.3**                         | Best-in-class throughput on MI300X with continuous batching and prefix caching             |
-| Model            | **Qwen/Qwen3-8B**                      | Strong instruction following + reasoning at ~18 GB VRAM; open-weights, commercial-friendly |
-| GPU runtime      | **ROCm 6.2**                           | MI300X's native stack; PyTorch 2.4 wheels ship with first-class ROCm support               |
-| LLM client       | **langchain-openai (ChatOpenAI)**      | CrewAI-compatible; points at any OpenAI-compatible `base_url`                              |
-| Frontend         | **Gradio 4.44**                        | HF Spaces' native SDK; generator-based streaming maps directly to agent activity events    |
-| Tools            | **yfinance · ddgs · pandas-ta-remake** | All keyless — no API tokens needed in the demo                                             |
-| Testing          | **pytest 8 + hypothesis 6**            | 309 passing; every correctness property from the design has a property test                |
+| Concern          | Choice                                 | Why                                                                                           |
+| ---------------- | -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Agent framework  | **CrewAI 1.14**                        | Built-in role/task/dependency model; `context=[...]` handles wait-for-predecessor cleanly     |
+| Inference server | **vLLM 0.17**                          | Continuous batching + prefix caching; first-class ROCm 7.x support for MI300X                 |
+| Model            | **Qwen/Qwen3-14B**                     | Strong instruction following + tool-calling at ~28 GB VRAM; open-weights, commercial-friendly |
+| GPU runtime      | **ROCm 7.2**                           | MI300X's native stack; PyTorch 2.7 ROCm wheels ship with matching support                     |
+| LLM client       | **crewai.LLM (litellm hosted_vllm)**   | Native CrewAI integration; points at any OpenAI-compatible `base_url` with tool-calling       |
+| Frontend         | **Gradio 5**                           | HF Spaces' native SDK; generator-based streaming maps directly to agent activity events       |
+| Tools            | **yfinance · ddgs · pandas-ta-remake** | All keyless — no API tokens needed in the demo                                                |
+| Testing          | **pytest 8 + hypothesis 6**            | 309 passing; every correctness property from the design has a property test                   |
 
 ---
 
