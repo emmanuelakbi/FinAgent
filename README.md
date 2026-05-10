@@ -1,6 +1,6 @@
 # FinAgent
 
-**AI-powered trading signal generator. Five specialist agents collaborate on a single AMD Instinct MI300X to produce structured BUY / SELL / HOLD calls with confidence, entry, stop loss, target, and per-agent reasoning.**
+**AI trading signal generator. Five AI agents work together on one AMD Instinct MI300X GPU to tell you whether to BUY, SELL, or HOLD a stock — with a confidence score, entry price, stop loss, target price, and reasoning from each agent.**
 
 Built for the [AMD Developer Hackathon](https://lablab.ai/ai-hackathons/amd-developer) · Track: **AI Agents & Agentic Workflows** · May 2026.
 
@@ -16,15 +16,15 @@ Built for the [AMD Developer Hackathon](https://lablab.ai/ai-hackathons/amd-deve
 
 ## The problem
 
-Retail traders juggling a watchlist face a daily triage problem: which of these 10 tickers deserves real attention today? Most AI tools answer this with a single-shot prompt into a general-purpose model — the output is confident, shallow, and indistinguishable across tickers.
+Most retail traders watch 10 or 20 stocks at once and have to pick which ones to pay attention to each day. Most AI tools try to help by asking one general-purpose model one big question. The answer looks confident but is usually shallow, and every stock gets basically the same reply.
 
-Real analysts don't work that way. They split the work: one person reads the news, another digs into financials, another reads charts, another sizes the trade. Then a head of strategy synthesizes.
+A real investment team works differently. One person reads the news. Another looks at the financials. Another looks at the charts. Another figures out how much money to risk. Then the head of strategy puts it all together and makes the call.
 
 ## The solution
 
-FinAgent reproduces that division of labour with five CrewAI agents running against a **single locally-hosted Qwen3-14B instance on an AMD MI300X GPU**. Each agent is tool-equipped for its niche; they run in a dependency-correct topology (scanner + fundamental + technical first, then risk, then strategy), and the final output conforms to a strict schema that the Gradio frontend parses into interactive signal cards.
+FinAgent copies that team structure. Five AI agents run against one Qwen3-14B model hosted on an AMD MI300X GPU. Each agent has its own job and its own tools. They run in the right order (news + financials + charts first, then risk, then the final decision), and the final answer is formatted so the Gradio frontend can show it as a clean signal card.
 
-Everything is **self-hosted inference** — no OpenAI, no Claude, no API bills. The $100 AMD Developer Cloud credit is the entire compute budget.
+Everything runs on our own GPU — **no OpenAI, no Claude, no API bills**. The $100 of free AMD Developer Cloud credit is the entire compute budget.
 
 ---
 
@@ -62,28 +62,28 @@ flowchart LR
     MS & FA & TA & RM & CS <-->|OpenAI-compatible HTTPS| V
 ```
 
-| Layer              | Role                                                                  | Subsystem             |
-| ------------------ | --------------------------------------------------------------------- | --------------------- |
-| `inference/`       | Bash-driven ROCm + vLLM + Qwen3 deployment on MI300X                  | `inference-setup`     |
-| `tools/`           | 10 keyless tool functions (yfinance, ddgs, pandas-ta) agents can call | `agent-tools`         |
-| `crew/`            | CrewAI agent + task + crew + runner orchestration, with callbacks     | `agent-orchestration` |
-| `gradio-frontend/` | Dark financial-terminal Gradio UI, deployable as an HF Space          | `gradio-frontend`     |
+| Folder             | What it does                                                                |
+| ------------------ | --------------------------------------------------------------------------- |
+| `inference/`       | Scripts that install vLLM + ROCm and run Qwen3-14B on the MI300X            |
+| `tools/`           | 10 helper functions the agents call (yfinance, DuckDuckGo news, pandas-ta)  |
+| `crew/`            | The 5 agents, how they pass work to each other, and the final signal parser |
+| `gradio-frontend/` | The dark financial-terminal UI — also deployable as a Hugging Face Space    |
 
 ## The five agents
 
-| #   | Agent                   | Goal                                      | Tools                                           |
-| --- | ----------------------- | ----------------------------------------- | ----------------------------------------------- |
-| 1   | **Market Scanner**      | Detect news and price/volume anomalies    | `search_news`, `get_price_change`, `get_volume` |
-| 2   | **Fundamental Analyst** | Determine intrinsic value                 | `get_financials`, `get_earnings`, `get_peers`   |
-| 3   | **Technical Analyst**   | Identify entry/exit via indicators        | `get_price_history`, `calculate_indicators`     |
-| 4   | **Risk Manager**        | Size position, place ATR-based stop-loss  | `calculate_position_size`, `set_stop_loss`      |
-| 5   | **Chief Strategist**    | Synthesize 1–4 into a final BUY/SELL/HOLD | — pure reasoning                                |
+| #   | Agent                   | What it does                                              | Tools it uses                                   |
+| --- | ----------------------- | --------------------------------------------------------- | ----------------------------------------------- |
+| 1   | **Market Scanner**      | Reads recent news and spots unusual price or volume moves | `search_news`, `get_price_change`, `get_volume` |
+| 2   | **Fundamental Analyst** | Checks whether the company is fairly valued               | `get_financials`, `get_earnings`, `get_peers`   |
+| 3   | **Technical Analyst**   | Reads the chart — trend, RSI, MACD, Bollinger Bands       | `get_price_history`, `calculate_indicators`     |
+| 4   | **Risk Manager**        | Sets position size and stop-loss based on volatility      | `calculate_position_size`, `set_stop_loss`      |
+| 5   | **Chief Strategist**    | Combines agents 1–4 and picks BUY, SELL, or HOLD          | — just reasoning                                |
 
-Agents 1, 2, 3 run in parallel. Risk Manager waits for the Technical Analyst's entry price. Chief Strategist waits for all four.
+Agents 1, 2, 3 run at the same time. Risk Manager waits for the Technical Analyst's entry price. Chief Strategist waits for all four.
 
 ## Example output
 
-For a watchlist `AAPL, NVDA, BTC-USD`, each ticker renders a card like:
+For a watchlist `AAPL, NVDA, BTC-USD`, each stock gets a card like this:
 
 ```
 AAPL — BUY (Confidence: 75%)
@@ -92,81 +92,77 @@ Stop Loss: $284.52
 Target:    $307.99
 
 Reasoning:
-- Market:      Uptrend confirmed by rising prices and 20-day SMA, but
-               overbought RSI suggests short-term consolidation risk
-- Fundamental: Strong earnings momentum (+3.6–9.8% surprises), robust
-               margins (27%), but elevated debt and high P/E vs peers
-- Technical:   Price above Bollinger Upper ($291.39), RSI 73 overbought,
-               MACD neutral
-- Risk:        1:2 risk-reward ratio with 5% stop-loss and target;
-               position size 110 shares (2% of a $100K portfolio)
+- Market:      Price is trending up and above the 20-day average,
+               but RSI is overbought so short-term pullback is possible
+- Fundamental: Strong recent earnings, healthy profit margins (27%),
+               but debt is high and P/E is above peers
+- Technical:   Price above upper Bollinger Band ($291.39),
+               RSI 73 (overbought), MACD neutral
+- Risk:        1:2 risk/reward with a 5% stop-loss and 5% target.
+               110 shares = 2% of a $100,000 portfolio
 ```
 
-The entry price is grounded in the live yfinance quote. Stop-loss and target are synthesised from the Risk Manager's ATR band, with an automatic sanity check that replaces any LLM-emitted price that drifts more than 20 % from the live quote.
+The entry price is taken from the live yfinance quote — not made up by the model. Stop-loss and target come from the Risk Manager's calculation, and there's a safety net that replaces any price that drifts too far from the live quote.
 
 ---
 
-## What makes this technically interesting
+## What makes this project interesting
 
-### Property-based testing of invariants
+### 1. The model doesn't get to make up prices
 
-The whole project is built around **invariants that must hold universally** — rules like "every agent must see the same `base_url`," "a formatted signal must survive a round-trip through the parser," "a failed ticker must never break the watchlist." These invariants are enforced by:
+Small LLMs confidently invent prices from their training data. A 14B model will happily tell you NVDA's entry is $10 on a day it's trading at $215. We don't let it. Every signal the user sees has its entry price set to the live yfinance quote, and the stop / target are rescaled around that live price. If the model's output is too garbled to parse at all, we build a clean signal from the live price directly. The card always reflects real market data.
 
-- A **correctness-invariants** layer that states, up-front, what the implementation must guarantee.
-- **Hypothesis** property-based tests that exercise those invariants across thousands of randomised inputs.
+### 2. One model, five agents
 
-Examples of what's mechanically verified:
+Most CrewAI examples give each agent its own LLM connection. We give all five agents the same one. vLLM keeps a cache of recent prompt prefixes, so when five agents start with similar context, vLLM skips redundant work — you get faster responses on the MI300X.
 
-- `LLMConfig.base_url` propagates through every agent to the `crewai.LLM` client (Property 1).
-- A formatted `TradingSignal` survives a round-trip through the parser for any valid ticker, action, confidence, and price (Property 2).
-- The watchlist parser normalises arbitrary whitespace / case / empty segments deterministically (Property 7).
-- `WatchlistResult.successful + failed == total_tickers` always holds (Property 8).
-- The vLLM health check reports failure for any non-200 response, for arbitrary status code and body content.
+### 3. One bad ticker doesn't break the whole run
 
-All 309 unit + property tests pass on every commit.
+If one stock blows up (bad symbol, network glitch, weird LLM output), the runner catches the error and keeps going. You still get clean cards for the other tickers, and one error card for the broken one.
 
-### Shared LLM instance across all five agents
+### 4. You can watch the agents work in real time
 
-Most CrewAI examples give every agent its own LLM client. FinAgent constructs **one** `crewai.LLM` (backed by litellm's `hosted_vllm/` provider) pointing at the vLLM endpoint and shares it across the five agents. vLLM's prefix caching means repeated backstory prefixes hit the same KV cache, giving a measurable throughput win on the MI300X.
+Every step each agent takes fires an event to the frontend. You see "Market Scanner running", "Technical Analyst finished", etc. as it happens, instead of staring at a spinner.
 
-### Fault-isolated multi-ticker pipeline
+### 5. 309 tests, run on every commit
 
-If one ticker blows up (bad symbol, network hiccup, parser failure), the runner captures the error in a `CrewResult` and keeps going. The Gradio frontend renders an error card for that ticker and normal signal cards for the rest. No silent failure, no broken dashboard.
+The codebase has 309 automated tests, including randomised tests (via Hypothesis) that throw thousands of weird inputs at the parser and agents to make sure nothing breaks. Examples of what's tested:
 
-### Callback-driven activity feed
-
-Every agent lifecycle event (`task_start`, `task_complete`, `agent_output`, `task_failed`, `crew_error`) fires a structured `ActivityEvent` through a single callback. The Gradio frontend consumes those events to drive the live activity feed — so the user watches the pipeline think, not just its final output.
+- Every agent gets the same vLLM URL (it would be a disaster if one silently went to OpenAI)
+- A formatted signal round-trips through the parser without losing or changing numbers
+- The watchlist parser handles weird spacing, casing, and empty entries
+- If a ticker fails, the runner's total count still adds up: successes + failures = tickers
 
 ---
 
-## Repository layout
+## Folder layout
 
 ```
 FinAgent/
-├── crew/                     # Agent orchestration (FinAgentCrew, WatchlistRunner)
-├── tools/                    # 10 tool functions for agents (yfinance, ddgs, pandas-ta)
-├── inference/                # ROCm + vLLM + Qwen deployment scripts
+├── crew/                     # The 5 agents and how they hand off work
+├── tools/                    # 10 tool functions (yfinance, ddgs, pandas-ta)
+├── inference/                # Scripts to run vLLM + Qwen on an AMD MI300X
 ├── gradio-frontend/
-│   ├── app.py                # Gradio UI + event handler
-│   ├── validation.py         # Input validation (tickers, portfolio)
-│   ├── rendering.py          # HTML rendering (cards, feed, CSS)
-│   └── space/                # Ready-to-push HF Space package (app+deps+crew+tools)
-├── tests/                    # Agent-orchestration tests
-├── _crewai_mocks.py          # Shared crewai MagicMock classes for testing
-├── conftest.py               # Root pytest config — installs mocks at session start
-├── requirements.txt          # Pinned runtime deps
-└── requirements-dev.txt      # Test + hypothesis deps
+│   ├── app.py                # The Gradio UI
+│   ├── validation.py         # Ticker / portfolio input checks
+│   ├── rendering.py          # HTML for cards, activity feed, styles
+│   └── space/                # Ready-to-push HF Space copy of everything
+├── tests/                    # Tests for the agent orchestration
+├── _crewai_mocks.py          # Test-only CrewAI substitutes
+├── conftest.py               # Root pytest config
+├── requirements.txt          # Runtime dependencies
+└── requirements-dev.txt      # Extra dependencies for running tests
 ```
 
 ---
 
-## Quick start (local development)
+## Quick start (run it locally)
 
-### Prerequisites
+### You'll need
 
-- Python 3.11 or later (tested on 3.13)
-- Git, pip
-- A vLLM endpoint. Either run one yourself via `inference/setup.sh` on an AMD GPU, or point at any OpenAI-compatible endpoint for local experiments.
+- Python 3.11 or newer (tested on 3.13)
+- Git and pip
+- A vLLM endpoint. You can run one yourself with `inference/setup.sh` on an AMD GPU, or point at any OpenAI-compatible endpoint for testing.
 
 ### Install
 
@@ -178,55 +174,55 @@ source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
 ```
 
-### Run the test suite
+### Run the tests
 
 ```bash
 pytest tests/ tools/tests/ inference/tests/ gradio-frontend/tests/ -m "not integration"
 # → 309 passed
 ```
 
-### Run the Gradio app locally
+### Run the app locally
 
 ```bash
-export VLLM_ENDPOINT_URL=http://localhost:8000/v1   # or wherever vLLM is
+export VLLM_ENDPOINT_URL=http://localhost:8000/v1   # or wherever your vLLM is
 python gradio-frontend/app.py
 # → http://127.0.0.1:7860
 ```
 
-### Deploy the Gradio app to a Hugging Face Space
+### Deploy the UI to a Hugging Face Space
 
-The repo ships a ready-to-push Space directory at `gradio-frontend/space/`. It contains everything Hugging Face needs — `app.py`, `requirements.txt`, the `crew/` package, the `tools/` package, and a Space-flavoured `README.md` with the SDK metadata header. Create a new Space on Hugging Face (Gradio SDK, CPU basic), clone it, copy the contents of `gradio-frontend/space/` in, then `git push`. Set a `VLLM_ENDPOINT_URL` repository secret pointing at your vLLM instance and the Space will build and serve.
+There's a ready-to-push Space copy at `gradio-frontend/space/` — it has `app.py`, `requirements.txt`, the `crew/` and `tools/` folders, and the Space-style README. Create a new Space on Hugging Face (pick Gradio SDK, CPU basic), clone it, copy everything from `gradio-frontend/space/` into it, and push. Set a `VLLM_ENDPOINT_URL` secret on the Space pointing at your vLLM server and it'll be live.
 
 ---
 
 ## Run it on your own GPU in under 10 minutes
 
-If the live Space at `huggingface.co/spaces/lablab-ai-amd-developer-hackathon/finagent` is offline, here is the complete self-host recipe. Everything is OpenAI-compatible, so the project runs against **any** vLLM instance, not just AMD silicon — a rented A100 or H100 works identically.
+If the live Space at `huggingface.co/spaces/lablab-ai-amd-developer-hackathon/finagent` is down, here's how to run the whole thing yourself. The project talks to any OpenAI-compatible server, so it works on AMD GPUs, Nvidia GPUs, or even a hosted provider.
 
-### On an AMD MI300X (matches the original deployment)
+### On an AMD MI300X (what we used)
 
 ```bash
-# 1. Clone the repo
+# 1. Get the code
 git clone https://github.com/emmanuelakbi/FinAgent.git
 cd FinAgent
 
-# 2. Boot vLLM with Qwen3-14B and tool-calling enabled
+# 2. Start vLLM with Qwen3-14B and tool-calling on
 cd inference
 ./setup.sh --host 0.0.0.0 --port 8000
-# Wait ~30s for "Application startup complete", then verify:
+# Wait about 30 seconds for "Application startup complete", then check it works:
 ./health_check.sh --host 0.0.0.0 --port 8000
 
-# 3. In a second terminal, launch the Gradio frontend
+# 3. In another terminal, start the Gradio app
 cd ..
 pip install -r requirements.txt
 export VLLM_ENDPOINT_URL=http://localhost:8000/v1
 python gradio-frontend/app.py
-# Open http://127.0.0.1:7860 and enter a watchlist
+# Open http://127.0.0.1:7860 and type in a watchlist
 ```
 
 ### On any other GPU (A100, H100, RTX 4090 with enough VRAM)
 
-Qwen3-14B requires ~28 GB VRAM. Skip `inference/setup.sh` and run vanilla vLLM:
+Qwen3-14B needs about 28 GB of VRAM. Skip `inference/setup.sh` and run plain vLLM:
 
 ```bash
 pip install "vllm>=0.17"
@@ -234,26 +230,26 @@ vllm serve Qwen/Qwen3-14B \
     --host 0.0.0.0 --port 8000 \
     --enable-auto-tool-choice --tool-call-parser hermes
 
-# Then, from the repo root:
+# Then, back in the repo:
 pip install -r requirements.txt
 export VLLM_ENDPOINT_URL=http://localhost:8000/v1
 python gradio-frontend/app.py
 ```
 
-### Without any GPU — use a hosted Qwen3-14B endpoint
+### No GPU? Use a hosted Qwen3-14B endpoint
 
-To verify the agents run end-to-end without provisioning hardware, point `VLLM_ENDPOINT_URL` at any OpenAI-compatible endpoint that serves Qwen3-14B (Together AI, Fireworks, OpenRouter all work). The code uses `crewai.LLM` with the `hosted_vllm/` litellm provider, so any OpenAI-compatible base URL drops in:
+Point `VLLM_ENDPOINT_URL` at any OpenAI-compatible server that runs Qwen3-14B (Together AI, Fireworks, OpenRouter all work):
 
 ```bash
 export VLLM_ENDPOINT_URL=https://your-provider/v1
-export OPENAI_API_KEY=your_key   # optional; any value works against vLLM itself
+export OPENAI_API_KEY=your_key   # optional for vLLM, needed for hosted providers
 python gradio-frontend/app.py
 ```
 
-### Verifying the pipeline without the UI
+### Test the pipeline without the UI
 
 ```bash
-# Runs the full 5-agent pipeline for AAPL and prints the signal:
+# Runs the full 5-agent pipeline for AAPL and prints the result:
 python -c "
 from crew import LLMConfig, OrchestratorConfig, WatchlistRunner
 from tools import (search_news, get_price_change, get_volume,
@@ -273,7 +269,7 @@ print(runner.run('AAPL'))
 "
 ```
 
-### Verifying the tests
+### Run the full test suite
 
 ```bash
 pip install -r requirements-dev.txt
@@ -285,46 +281,46 @@ pytest tests/ tools/tests/ inference/tests/ gradio-frontend/tests/ -m "not integ
 
 ## Tech stack
 
-| Concern          | Choice                                 | Why                                                                                           |
-| ---------------- | -------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Agent framework  | **CrewAI 1.14**                        | Built-in role/task/dependency model; `context=[...]` handles wait-for-predecessor cleanly     |
-| Inference server | **vLLM 0.17**                          | Continuous batching + prefix caching; first-class ROCm 7.x support for MI300X                 |
-| Model            | **Qwen/Qwen3-14B**                     | Strong instruction following + tool-calling at ~28 GB VRAM; open-weights, commercial-friendly |
-| GPU runtime      | **ROCm 7.2**                           | MI300X's native stack; PyTorch 2.7 ROCm wheels ship with matching support                     |
-| LLM client       | **crewai.LLM (litellm hosted_vllm)**   | Native CrewAI integration; points at any OpenAI-compatible `base_url` with tool-calling       |
-| Frontend         | **Gradio 5**                           | HF Spaces' native SDK; generator-based streaming maps directly to agent activity events       |
-| Tools            | **yfinance · ddgs · pandas-ta-remake** | All keyless — no API tokens needed in the demo                                                |
-| Testing          | **pytest 8 + hypothesis 6**            | 309 passing; every correctness property from the design has a property test                   |
+| Piece            | What we used                           | Why                                                                                 |
+| ---------------- | -------------------------------------- | ----------------------------------------------------------------------------------- |
+| Agent framework  | **CrewAI 1.14**                        | Built-in role + task + dependency model that handles "wait for this other agent"    |
+| Inference server | **vLLM 0.17**                          | Fast, caches repeated prompts, works natively on AMD MI300X                         |
+| Model            | **Qwen/Qwen3-14B**                     | Good at following instructions and calling tools, runs in ~28 GB VRAM, open-weights |
+| GPU runtime      | **ROCm 7.2**                           | AMD's GPU stack for MI300X, PyTorch 2.7 has matching ROCm builds                    |
+| LLM client       | **crewai.LLM (litellm hosted_vllm)**   | Works with any OpenAI-compatible URL, and supports tool-calling                     |
+| Frontend         | **Gradio 5**                           | Hugging Face Spaces native; streams updates to the UI while agents work             |
+| Tools            | **yfinance · ddgs · pandas-ta-remake** | All free and keyless — no API tokens needed                                         |
+| Testing          | **pytest 8 + hypothesis 6**            | 309 passing; every key guarantee in the code has a test that tries to break it      |
 
 ---
 
 ## Cost note
 
-The $100 AMD Developer Cloud credit is the entire compute budget.
-MI300X pricing runs roughly $2–5/hour → 20–50 hours of runtime available on a single credit.
-The endpoint only needs to be live while the Gradio frontend is in active use; shutting the instance down between sessions preserves the remaining credit.
+The $100 of AMD Developer Cloud credit is the entire compute budget.
+The MI300X costs about $2–5 per hour, so that's 20–50 hours of runtime on a single credit.
+The GPU only needs to be on while someone is actually using the Gradio app — turning it off between sessions saves the remaining credit.
 
 ---
 
 ## How it was built
 
-The architecture started from a single constraint: every signal a user sees must be grounded in real market data, not LLM imagination. That constraint cascaded into the rest of the design.
+I started with one rule: every price a user sees must come from real market data, not from the model's imagination. The rest of the design followed from that rule.
 
-**The agent topology** mirrors how an actual investment desk splits the work. Scanner, Fundamental Analyst, and Technical Analyst run in parallel against the same ticker — each reads its own slice of the world. Risk Manager waits on Technical's entry price because you can't size a position without one. Chief Strategist waits on all four, then produces the final BUY/SELL/HOLD. CrewAI's `context=[...]` plumbing handles the wait-for-predecessor dependencies cleanly without a bespoke scheduler.
+**The 5-agent structure** mirrors how a real investment team splits the work. Scanner, Fundamental Analyst, and Technical Analyst all look at the same stock at the same time, each from their own angle. Risk Manager can't do its job until Technical picks an entry price, so it waits. Chief Strategist waits for all four and makes the final call. CrewAI handles the "wait for this other agent" plumbing so I didn't have to build a scheduler.
 
-**The grounding layer** was the hardest engineering problem. A 14B model running at temperature 0.7 will happily emit `$10.00` as the entry price for NVDA on a day it traded at $215. It wasn't enough to ask nicely in the prompt — I had to build a deterministic post-processor that anchors every parsed signal's entry price to the live yfinance quote and rescales stop/target proportionally to preserve the LLM's risk/reward geometry. When the output is too malformed to parse at all, a fallback synthesiser reads the live price directly and constructs a clean signal from scratch. That turned the pipeline from "usually works" into "always returns a grounded card."
+**The grounding layer** was the hardest part. A 14B model running at temperature 0.7 will cheerfully tell you NVDA's entry is $10.00 when it's actually $215. Asking nicely in the prompt didn't work. So I wrote code that runs _after_ the model — it takes whatever prices the model emitted, keeps the model's risk/reward shape, but replaces the entry with the live yfinance quote and scales the stop + target to match. If the model's output is too broken to parse at all, the code builds a clean signal from the live price by itself. The pipeline went from "usually works" to "always gives a card with real numbers."
 
-**The test suite** was built property-first. Every invariant that matters — `base_url` propagation to every agent, `TradingSignal` round-trip parseability, watchlist parser determinism under arbitrary whitespace, fault isolation across tickers, vLLM health-check behaviour under any HTTP status code — is exercised by a Hypothesis property test across thousands of randomised inputs. 309 unit + property tests pass on every commit.
+**The tests** were written before the features. The rule was: for every guarantee the code is supposed to make — "every agent uses the same vLLM URL", "the watchlist parser handles bad input", "one failed ticker doesn't break the rest" — write a test that tries to break it with randomised inputs. Hypothesis (the property-based testing library) generates thousands of weird inputs automatically. 309 tests pass on every commit.
 
-**The UI preferences** (Risk Tolerance, Trading Style, Portfolio Value) weren't cosmetic dropdowns added for variety. They thread end-to-end into the Strategist's task prompt and the grounding clamps, so the same ticker at the same moment produces a tight 1.5% / 2% band on Conservative / Day Trading and a wide 5% / 10% band on Aggressive / Position Trading. A user's stated profile actually changes what they see.
+**The Risk Tolerance / Trading Style dropdowns actually matter.** Conservative + Day Trading gives you a tight 1.5% stop and 2% target. Aggressive + Position Trading gives you a wide 5% stop and 10% target. Same stock, same moment, different numbers — because the dropdowns are wired all the way through to both the Strategist's prompt and the grounding layer.
 
-**Inference is self-hosted**. No OpenAI, no Claude, no API bills. vLLM 0.17 on ROCm 7.2 exposes an OpenAI-compatible endpoint; CrewAI agents talk to it via the `hosted_vllm/` litellm provider with native tool-calling enabled. Every one of the five agents shares the same `crewai.LLM` instance, so vLLM's prefix caching means repeated backstory prefixes hit the same KV cache — a measurable throughput win on the MI300X.
+**Inference is self-hosted** — no OpenAI, no Claude, no API bills. vLLM on ROCm serves Qwen3-14B from the MI300X with an OpenAI-compatible API. All five agents use the same model instance, so vLLM's prompt cache kicks in and things run faster on repeated prefixes.
 
 ---
 
 ## Disclaimer
 
-⚠️ **The trading signals produced here are for informational purposes only and do not constitute financial advice.** Always do your own research before placing a trade.
+⚠️ **The signals produced here are for information only and are not financial advice.** Do your own research before making any trade.
 
 ---
 
