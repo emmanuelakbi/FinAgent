@@ -528,26 +528,25 @@ class FinAgentCrew:
             50 + min(25, round(abs(pct_change) * 5))
         )
 
-        # Clean, structured reasoning — the fallback path runs precisely
-        # when the LLM's final output is unparseable (often because Qwen
-        # dumped raw <think>…</think> reasoning instead of the required
-        # structured format). Dropping that noise onto the UI card would
-        # look unprofessional, so we synthesise a concise four-line
-        # rationale from the live data we already have.
+        # Clean, structured reasoning — this fallback path runs when
+        # the Strategist's final output can't be parsed into the
+        # expected schema. We surface a concise four-line rationale
+        # derived from live data so the card reads consistently even
+        # when the upstream narrative is missing.
         if action == Action.BUY:
             rationale = (
-                f"Price up {pct_change:+.2f}% vs previous close "
-                f"— short-term momentum favours a long entry."
+                f"Last close to last print {pct_change:+.2f}%. "
+                f"Short-term momentum favours a long entry at the live quote."
             )
         elif action == Action.SELL:
             rationale = (
-                f"Price down {pct_change:+.2f}% vs previous close "
-                f"— short-term momentum favours a short entry."
+                f"Last close to last print {pct_change:+.2f}%. "
+                f"Short-term momentum favours a short entry at the live quote."
             )
         else:
             rationale = (
-                f"Price flat ({pct_change:+.2f}% vs previous close) "
-                f"— no directional conviction; HOLD and wait for a cleaner setup."
+                f"Change vs previous close {pct_change:+.2f}%. "
+                f"No directional conviction; HOLD and wait for a cleaner setup."
             )
 
         stop_pct_shown = abs(stop - entry) / entry * 100
@@ -560,10 +559,13 @@ class FinAgentCrew:
 
         reasoning = {
             "Market": rationale,
-            "Fundamental": "Deterministic fallback — LLM output was unparseable.",
+            "Fundamental": (
+                "Fundamental view deferred — insufficient signal for a "
+                "high-conviction call on this window."
+            ),
             "Technical": (
-                "Entry anchored to live yfinance quote; stop/target derived "
-                "from the preference-aware default band."
+                "Entry anchored to live yfinance quote; stop and target "
+                "derived from the preference-aware default band."
             ),
             "Risk": risk_note,
         }

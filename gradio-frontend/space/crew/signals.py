@@ -46,6 +46,12 @@ class TradingSignalParser:
     CONFIDENCE_PATTERN = re.compile(r"(\d{1,3})\s*%")
     PRICE_PATTERN = re.compile(r"\$\s*([\d,]+\.?\d*)")
 
+    # Reasoning-block markers Qwen3 wraps its deliberation in. We strip
+    # these at the entry point so the downstream regex patterns can
+    # match against the clean final answer rather than the verbose
+    # chain-of-thought that surrounds it.
+    THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
     def parse(self, raw_output: str, ticker: str) -> Optional[TradingSignal]:
         """Parse raw output into a TradingSignal.
 
@@ -61,9 +67,20 @@ class TradingSignalParser:
         Returns:
             TradingSignal if parsing succeeds, None if output is unparseable
         """
-        signal = self._parse_primary(raw_output, ticker)
+        # Strip Qwen3's <think>...</think> reasoning blocks before
+        # matching. Qwen will usually wrap its internal deliberation in
+        # these tags and place the structured final answer *after* the
+        # closing </think>, but a stray token or unclosed tag used to
+        # push the whole output into the fallback path. Removing them
+        # lets the primary pattern match reliably.
+        cleaned = self.THINK_BLOCK.sub("", raw_output)
+        # Also drop any leftover lone <think> or </think> tag so the
+        # next regex doesn't accidentally anchor on them.
+        cleaned = re.sub(r"</?think>", "", cleaned, flags=re.IGNORECASE)
+
+        signal = self._parse_primary(cleaned, ticker)
         if signal is None:
-            signal = self._parse_fallback(raw_output, ticker)
+            signal = self._parse_fallback(cleaned, ticker)
         if signal is None:
             return None
         return self._sanity_fix_prices(signal)
