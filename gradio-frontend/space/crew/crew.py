@@ -355,6 +355,22 @@ class FinAgentCrew:
         if _target_unreasonable(new_target):
             new_target = None
 
+        # R:R guard: a BUY/SELL card with target closer to entry than
+        # stop is an inverted risk-reward setup (you'd risk more than
+        # you could make). Qwen occasionally emits this when it picks
+        # a conservative target that's still within the absolute clamp
+        # but not sensible relative to the stop it chose. Force the
+        # target back to the profile default band in that case.
+        if (
+            new_stop is not None
+            and new_target is not None
+            and signal.action in (Action.BUY, Action.SELL)
+        ):
+            stop_dist = abs(new_stop - live_entry)
+            target_dist = abs(new_target - live_entry)
+            if target_dist <= stop_dist:
+                new_target = None
+
         rescaled = TradingSignal(
             ticker=signal.ticker,
             action=signal.action,
